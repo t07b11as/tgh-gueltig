@@ -1,38 +1,154 @@
 <!doctype html>
-<html>
+<html lang="de">
 <head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TGH Ticketing Scanner</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://unpkg.com/html5-qrcode"></script>
+<style>
+:root{--blue:#0B4EA2;--dark:#062B5F;--bg:#F3F7FD;--text:#102033;--muted:#667085;--green:#039855;--red:#D92D20;--amber:#F79009;--line:#D8E4F2}
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,Helvetica,sans-serif;background:linear-gradient(180deg,#eef6ff,#fff);color:var(--text);min-height:100vh}
+.header{display:flex;align-items:center;gap:14px;padding:18px 22px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+.header img{width:52px;height:52px;object-fit:contain}
+.header h1{margin:0;color:var(--dark);font-size:22px}
+.header p{margin:3px 0 0;color:var(--muted);font-size:13px}
+.wrap{max-width:1100px;margin:0 auto;padding:24px}
+.card{background:#fff;border:1px solid var(--line);border-radius:22px;padding:22px;margin-bottom:18px;box-shadow:0 14px 38px rgba(11,78,162,.09)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+label{font-size:13px;color:var(--muted);font-weight:800;margin:12px 0 6px;display:block}
+input,select{width:100%;border:1px solid var(--line);border-radius:14px;padding:12px 14px;font-size:15px;background:#fff}
+button{border:0;border-radius:14px;padding:12px 16px;font-weight:900;cursor:pointer;background:var(--blue);color:#fff}
+button.secondary{background:#EEF5FF;color:var(--blue);border:1px solid #CFE0F7}
+button.green{background:var(--green)}button:disabled{opacity:.45}
+.hidden{display:none!important}.small{font-size:13px;color:var(--muted)}
+.status{border-radius:22px;padding:28px;text-align:center;font-size:38px;font-weight:1000}
+.status.valid{background:#E7FFF4;color:#007A4D}.status.used{background:#FFF1F0;color:var(--red)}.status.unknown{background:#F2F4F7;color:#344054}.status.closed{background:#FFF7E6;color:#B54708}
+#reader{border-radius:18px;overflow:hidden;border:1px solid var(--line);min-height:260px}
+</style>
 </head>
 <body>
+<header class="header"><img src="assets/tgh-logo.png"><div><h1>TGH Ticketing</h1><p>Scanner & Einlösung</p></div></header>
+<main class="wrap">
+<section id="loginCard" class="card">
+  <h2>Login</h2>
+  <label>Benutzername oder E-Mail</label><input id="email" type="text" placeholder="z.B. max">
+  <label>Passwort</label><input id="password" type="password">
+  <p><button onclick="login()">Einloggen</button></p>
+  <p id="loginMsg" class="small"></p>
+</section>
 
-<h2>Admin Login</h2>
-<input id="email" placeholder="Benutzername">
-<input id="password" type="password">
-<button onclick="login()">Login</button>
-<p id="msg"></p>
+<section id="app" class="hidden">
+  <div class="grid">
+    <div class="card">
+      <h2>QR-Code scannen</h2>
+      <label>Event auswählen</label><select id="scanEvent"></select>
+      <br><br>
+      <div id="reader"></div>
+      <p class="row"><button onclick="startScanner()">Kamera starten</button><button class="secondary" onclick="stopScanner()">Stoppen</button></p>
+    </div>
+    <div class="card">
+      <h2>Manuell prüfen</h2>
+      <label>Code oder QR-Link</label><input id="manualCode">
+      <p><button onclick="checkManual()">Prüfen</button></p>
+      <p><button class="secondary" onclick="logout()">Ausloggen</button></p>
+    </div>
+  </div>
+  <div id="ticketCard" class="card hidden">
+    <div id="statusBox" class="status unknown">BEREIT</div>
+    <h2 id="ticketTitle">Ticket</h2>
+    <p><b>Parkschein-ID:</b> <span id="parkschein"></span></p>
+    <p><b>Nummer:</b> <span id="nummer"></span></p>
+    <p><b>Code:</b> <span id="code"></span></p>
+    <p><b>Inhaber:</b> <span id="holder"></span></p>
+    <p><b>Art:</b> <span id="type"></span></p>
+    <p><b>Eingelöst:</b> <span id="usedInfo"></span></p>
+    <button id="redeemBtn" class="green" onclick="redeem()">Einlösen</button>
+  </div>
+</section>
+</main>
 
 <script>
-const client = supabase.createClient(
-"https://ebqevsvhbiertnqqkigk.supabase.co",
-"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVicWV2c3ZoYmllcnRucXFraWdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczNzI1MzIsImV4cCI6MjA5Mjk0ODUzMn0.hlbW90t0ncDjLq_oxDdQafEz80WcfgF8Rvt-XTKslIk"
-);
+const client = supabase.createClient("https://ebqevsvhbiertnqqkigk.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVicWV2c3ZoYmllcnRucXFraWdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczNzI1MzIsImV4cCI6MjA5Mjk0ODUzMn0.hlbW90t0ncDjLq_oxDdQafEz80WcfgF8Rvt-XTKslIk");
+let html5QrCode=null,currentTicket=null,currentUser=null,events=[];
 
-async function login(){
-  let email = document.getElementById("email").value.trim();
-  if(!email.includes("@")) email = email + "@tgh.local";
-
-  const password = document.getElementById("password").value;
-  const msg = document.getElementById("msg");
-
-  const { error } = await client.auth.signInWithPassword({ email, password });
-
-  if(error){
-    msg.innerText = error.message;
-  } else {
-    msg.innerText = "Login erfolgreich";
-  }
+function normalizeLogin(v){
+  let email=(v||"").trim();
+  if(email && !email.includes("@")) email=email.toLowerCase().replace(/\s+/g,"")+"@tgh.local";
+  return email;
 }
+function extractCode(raw){
+  try{const u=new URL(raw);return u.searchParams.get("id")||u.searchParams.get("code")||raw.trim();}
+  catch(e){return(raw||"").trim();}
+}
+async function login(){
+  const email=normalizeLogin(document.getElementById("email").value);
+  const password=document.getElementById("password").value;
+  const msg=document.getElementById("loginMsg");
+  msg.textContent="Login läuft...";
+  const {error}=await client.auth.signInWithPassword({email,password});
+  if(error){msg.textContent="Fehler: "+error.message;return;}
+  await init();
+}
+async function logout(){await client.auth.signOut();location.reload();}
+async function init(){
+  const {data}=await client.auth.getUser();
+  currentUser=data.user;
+  if(!currentUser)return;
+  loginCard.classList.add("hidden");
+  app.classList.remove("hidden");
+  await loadEvents();
+}
+async function loadEvents(){
+  const {data,error}=await client.from("events").select("*").order("created_at",{ascending:false});
+  if(error){alert(error.message);return;}
+  events=data||[];
+  scanEvent.innerHTML='<option value="">Event wählen</option>'+events.map(e=>`<option value="${e.id}">${e.name} (${e.status})</option>`).join("");
+}
+async function startScanner(){
+  if(html5QrCode)return;
+  html5QrCode=new Html5Qrcode("reader");
+  await html5QrCode.start({facingMode:"environment"},{fps:10,qrbox:250},
+    async d=>{await stopScanner();await checkCode(extractCode(d));},()=>{});
+}
+async function stopScanner(){
+  if(html5QrCode){try{await html5QrCode.stop();}catch(e){}html5QrCode.clear();html5QrCode=null;}
+}
+async function checkManual(){await checkCode(extractCode(document.getElementById("manualCode").value));}
+async function logScan(ticketCode,eventId,result){await client.from("scan_logs").insert({ticket_code:ticketCode,event_id:eventId,user_id:currentUser.id,result});}
+function showResult(statusText, cls, title, t, ticketCode){
+  ticketCard.classList.remove("hidden");
+  statusBox.textContent=statusText; statusBox.className="status "+cls;
+  ticketTitle.textContent=title;
+  parkschein.textContent=t?.parkschein_id||"-";
+  nummer.textContent=t?.nummer||"-";
+  document.getElementById("code").textContent=t?.code||ticketCode||"-";
+  holder.textContent=t?.ticket_holder||"-";
+  type.textContent=t?.ticket_type||"-";
+  usedInfo.textContent=t?.used_at?new Date(t.used_at).toLocaleString("de-DE"):"-";
+}
+async function checkCode(ticketCode){
+  const eventId=scanEvent.value;
+  if(!eventId){showResult("EVENT FEHLT","unknown","Bitte Event auswählen",null,ticketCode);return;}
+  const ev=events.find(e=>e.id===eventId);
+  if(!ev||ev.status!=="open"){await logScan(ticketCode,eventId,"EVENT_CLOSED");showResult("EVENT GESCHLOSSEN","closed","Scannen nicht möglich",null,ticketCode);redeemBtn.disabled=true;return;}
+  const {data,error}=await client.from("tickets").select("*").eq("code",ticketCode).maybeSingle();
+  currentTicket=data;
+  if(error||!data||data.event_id!==eventId){await logScan(ticketCode,eventId,"INVALID");showResult("UNGÜLTIG","unknown","Unbekannt oder falsches Event",data,ticketCode);redeemBtn.disabled=true;return;}
+  if(data.used){await logScan(ticketCode,eventId,"ALREADY_USED");showResult("BEREITS EINGELÖST","used","Bereits eingelöst",data,ticketCode);redeemBtn.disabled=true;return;}
+  showResult("GÜLTIG","valid","Gültiges Ticket",data,ticketCode);usedInfo.textContent="Nein";redeemBtn.disabled=false;
+}
+async function redeem(){
+  if(!currentTicket||currentTicket.used)return;
+  const now=new Date().toISOString();
+  const {error}=await client.from("tickets").update({used:true,used_at:now,used_by:currentUser.id}).eq("code",currentTicket.code).eq("used",false);
+  if(error)return alert(error.message);
+  await logScan(currentTicket.code,currentTicket.event_id,"REDEEMED");
+  await checkCode(currentTicket.code);
+}
+client.auth.getSession().then(({data})=>{if(data.session)init();});
 </script>
-
 </body>
 </html>
