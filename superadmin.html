@@ -10,48 +10,58 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
 <style>
-body {font-family: Arial; background:#f3f7fd; margin:0;}
-.container {max-width:900px; margin:auto; padding:20px;}
-.card {background:white; padding:20px; border-radius:12px; margin-bottom:20px;}
-button {padding:10px 15px; background:#0B4EA2; color:white; border:none; border-radius:8px;}
-input {padding:10px; width:100%; margin-bottom:10px;}
+body {font-family: Arial, Helvetica, sans-serif; background:#f3f7fd; margin:0;}
+.container {max-width:1000px; margin:auto; padding:20px;}
+.card {background:white; padding:20px; border-radius:12px; margin-bottom:20px; box-shadow:0 8px 24px rgba(0,0,0,.06);}
+button {padding:10px 15px; background:#0B4EA2; color:white; border:none; border-radius:8px; cursor:pointer; font-weight:bold;}
+button.secondary {background:#e9f1ff; color:#0B4EA2;}
+input {padding:10px; width:100%; margin-bottom:10px; box-sizing:border-box;}
+table {border-collapse:collapse;}
+th, td {padding:8px; border:1px solid #d8e4f2; text-align:left;}
+.small {color:#667085; font-size:13px;}
 </style>
 </head>
 
 <body>
 <div class="container">
 
-<h2>Superadmin Login</h2>
-<div id="login">
-<input id="email" placeholder="Email">
-<input id="password" type="password" placeholder="Passwort">
-<button onclick="login()">Login</button>
+<h2>TGH Superadmin Login</h2>
+
+<div id="loginBox" class="card">
+<input id="emailInput" placeholder="Email">
+<input id="passwordInput" type="password" placeholder="Passwort">
+<button onclick="doLogin()">Login</button>
+<p id="loginMessage" class="small"></p>
 </div>
 
-<div id="app" style="display:none;">
+<div id="appBox" style="display:none;">
 
 <div class="card">
 <h3>Tickets generieren</h3>
-<input id="count" placeholder="Anzahl">
+<input id="countInput" type="number" placeholder="Anzahl">
 <button onclick="generateTickets()">Generieren</button>
-<p id="status"></p>
+<p id="statusMessage"></p>
 </div>
 
 <div class="card">
 <h3>Layout hochladen</h3>
-<input type="file" id="layoutInput">
+<input type="file" id="layoutInput" accept="image/png,image/jpeg">
+<p class="small">Aktuell wird der QR-Code unten rechts und der Code unten links aufs Layout gesetzt.</p>
 </div>
 
 <div class="card">
 <h3>ZIP Export</h3>
-<button onclick="exportTickets()">Download</button>
+<button onclick="exportTickets()">Tickets als ZIP downloaden</button>
+<p class="small">Exportiert aktuell alle Tickets aus der Datenbank.</p>
 </div>
 
 <div class="card">
 <h3>Tickets</h3>
-<table border="1" width="100%">
+<button class="secondary" onclick="loadTickets()">Aktualisieren</button>
+<br><br>
+<table width="100%">
 <thead><tr><th>Code</th><th>Status</th><th>Aktion</th></tr></thead>
-<tbody id="tbody"></tbody>
+<tbody id="ticketTable"></tbody>
 </table>
 </div>
 
@@ -59,124 +69,182 @@ input {padding:10px; width:100%; margin-bottom:10px;}
 </div>
 
 <script>
-
 const client = supabase.createClient(
-"https://ebqevsvhbiertnqqkigk.supabase.co",
-"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVicWV2c3ZoYmllcnRucXFraWdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczNzI1MzIsImV4cCI6MjA5Mjk0ODUzMn0.hlbW90t0ncDjLq_oxDdQafEz80WcfgF8Rvt-XTKslIk"
+  "https://ebqevsvhbiertnqqkigk.supabase.co",
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVicWV2c3ZoYmllcnRucXFraWdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczNzI1MzIsImV4cCI6MjA5Mjk0ODUzMn0.hlbW90t0ncDjLq_oxDdQafEz80WcfgF8Rvt-XTKslIk"
 );
 
 let tickets = [];
 let layoutImage = null;
 
-document.getElementById("layoutInput").addEventListener("change", e=>{
-const reader = new FileReader();
-reader.onload = ()=> layoutImage = reader.result;
-reader.readAsDataURL(e.target.files[0]);
+document.getElementById("layoutInput").addEventListener("change", e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => layoutImage = reader.result;
+  reader.readAsDataURL(file);
 });
 
-async function login(){
-const {error} = await client.auth.signInWithPassword({
-email: email.value,
-password: password.value
-});
-if(!error){
-login.style.display="none";
-app.style.display="block";
-loadTickets();
-}
-}
+async function doLogin() {
+  const email = document.getElementById("emailInput").value.trim();
+  const password = document.getElementById("passwordInput").value;
+  const msg = document.getElementById("loginMessage");
 
-async function loadTickets(){
-const {data} = await client.from("tickets").select("*");
-tickets = data;
-render();
-}
+  msg.textContent = "Login läuft...";
 
-function render(){
-tbody.innerHTML = tickets.map(t=>`
-<tr>
-<td>${t.code}</td>
-<td>${t.used?"🔴 eingelöst":"🟢 gültig"}</td>
-<td>${t.used?`<button onclick="reactivate('${t.code}')">Reaktivieren</button>`:""}</td>
-</tr>`).join("");
+  const { error } = await client.auth.signInWithPassword({ email, password });
+
+  if (error) {
+    msg.textContent = "Login fehlgeschlagen: " + error.message;
+    return;
+  }
+
+  document.getElementById("loginBox").style.display = "none";
+  document.getElementById("appBox").style.display = "block";
+  await loadTickets();
 }
 
-async function reactivate(code){
-await client.from("tickets").update({
-used:false,
-used_at:null,
-used_by:null
-}).eq("code",code);
-loadTickets();
+async function loadTickets() {
+  const { data, error } = await client
+    .from("tickets")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    alert("Fehler beim Laden: " + error.message);
+    return;
+  }
+
+  tickets = data || [];
+  renderTickets();
 }
 
-function randomCode(){
-const chars="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-let c="";
-for(let i=0;i<10;i++) c+=chars[Math.floor(Math.random()*chars.length)];
-return c;
+function renderTickets() {
+  const tbody = document.getElementById("ticketTable");
+
+  tbody.innerHTML = tickets.map(t => `
+    <tr>
+      <td>${t.code}</td>
+      <td>${t.used ? "🔴 eingelöst" : "🟢 gültig"}</td>
+      <td>${t.used ? `<button onclick="reactivateTicket('${t.code}')">Reaktivieren</button>` : ""}</td>
+    </tr>
+  `).join("");
 }
 
-async function generateTickets(){
-const count = parseInt(document.getElementById("count").value);
-const {data:{user}} = await client.auth.getUser();
+async function reactivateTicket(code) {
+  const ok = confirm("Ticket wirklich reaktivieren?");
+  if (!ok) return;
 
-let list=[];
-for(let i=0;i<count;i++){
-let code=randomCode();
-list.push({
-code,
-parkschein_id:code.slice(0,6),
-nummer:i,
-status:"valid",
-used:false,
-created_by:user.id
-});
-}
-await client.from("tickets").insert(list);
-status.innerText="fertig";
-loadTickets();
-}
+  const { error } = await client
+    .from("tickets")
+    .update({
+      used: false,
+      used_at: null,
+      used_by: null
+    })
+    .eq("code", code);
 
-async function exportTickets(){
-if(!layoutImage){alert("Layout fehlt"); return;}
+  if (error) {
+    alert("Fehler: " + error.message);
+    return;
+  }
 
-const zip=new JSZip();
-
-for(let t of tickets){
-
-const canvas=document.createElement("canvas");
-const ctx=canvas.getContext("2d");
-
-const img=new Image();
-img.src=layoutImage;
-await new Promise(r=>img.onload=r);
-
-canvas.width=img.width;
-canvas.height=img.height;
-
-ctx.drawImage(img,0,0);
-
-const qrCanvas=document.createElement("canvas");
-await QRCode.toCanvas(qrCanvas, location.origin+"/?id="+t.code);
-
-ctx.drawImage(qrCanvas, canvas.width-200, canvas.height-200, 180,180);
-
-ctx.fillStyle="black";
-ctx.font="30px Arial";
-ctx.fillText(t.code,50,canvas.height-50);
-
-const blob=await new Promise(r=>canvas.toBlob(r));
-zip.file(t.code+".png", blob);
+  await loadTickets();
 }
 
-const content = await zip.generateAsync({type:"blob"});
-const a=document.createElement("a");
-a.href=URL.createObjectURL(content);
-a.download="tickets.zip";
-a.click();
+function randomCode() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code = "TGH-";
+  for (let i = 0; i < 4; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  code += "-";
+  for (let i = 0; i < 4; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  code += "-";
+  for (let i = 0; i < 2; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  return code;
 }
 
+async function generateTickets() {
+  const count = parseInt(document.getElementById("countInput").value, 10);
+  const status = document.getElementById("statusMessage");
+
+  if (!count || count <= 0) {
+    status.textContent = "Bitte Anzahl eingeben.";
+    return;
+  }
+
+  status.textContent = "Erstelle Tickets...";
+
+  const { data: { user } } = await client.auth.getUser();
+
+  const newTickets = [];
+  for (let i = 0; i < count; i++) {
+    const code = randomCode();
+    const parts = code.split("-");
+    newTickets.push({
+      code,
+      parkschein_id: parts[0] + "-" + parts[1],
+      nummer: parts[2],
+      status: "valid",
+      used: false,
+      created_by: user.id
+    });
+  }
+
+  const { error } = await client.from("tickets").insert(newTickets);
+
+  if (error) {
+    status.textContent = "Fehler: " + error.message;
+    return;
+  }
+
+  status.textContent = count + " Tickets erstellt.";
+  await loadTickets();
+}
+
+async function exportTickets() {
+  if (!layoutImage) {
+    alert("Bitte zuerst ein Layout hochladen.");
+    return;
+  }
+
+  const zip = new JSZip();
+
+  for (const t of tickets) {
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+
+    const img = new Image();
+    img.src = layoutImage;
+    await new Promise(resolve => img.onload = resolve);
+
+    canvas.width = img.width;
+    canvas.height = img.height;
+
+    ctx.drawImage(img, 0, 0);
+
+    const qrCanvas = document.createElement("canvas");
+    await QRCode.toCanvas(qrCanvas, location.origin + location.pathname.replace("superadmin.html", "") + "?id=" + t.code);
+
+    const qrSize = Math.round(Math.min(canvas.width, canvas.height) * 0.18);
+    const qrX = canvas.width - qrSize - 50;
+    const qrY = canvas.height - qrSize - 50;
+
+    ctx.drawImage(qrCanvas, qrX, qrY, qrSize, qrSize);
+
+    ctx.fillStyle = "black";
+    ctx.font = Math.round(canvas.width * 0.035) + "px Arial";
+    ctx.fillText(t.code, 50, canvas.height - 60);
+
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
+    zip.file(t.code + ".png", blob);
+  }
+
+  const content = await zip.generateAsync({ type: "blob" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(content);
+  a.download = "tickets.zip";
+  a.click();
+}
 </script>
 
 </body>
