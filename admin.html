@@ -65,7 +65,45 @@ async function stopScanner(){if(html5QrCode){try{await html5QrCode.stop();}catch
 async function checkManual(){await checkCode(extract(manualCode.value));}
 async function logScan(code,eventId,resultText){await client.from('scan_logs').insert({ticket_code:code,event_id:eventId,user_id:currentUser.id,result:resultText});}
 function show(cls,title,body=''){result.classList.remove('hidden');result.innerHTML=`<div class="status ${cls}">${title}</div><p>${body}</p>`;}
-async function checkCode(code){const eventId=scanEvent.value;const ev=events.find(e=>e.id===eventId);if(!ev)return show('closed','EVENT FEHLT','Bitte Event auswählen.');if(ev.status!=='open'){await logScan(code,eventId,'EVENT_CLOSED');return show('closed','EVENT GESCHLOSSEN');}const{data:t,error}=await client.from('tickets').select('*').eq('code',code).maybeSingle();if(error||!t||t.event_id!==eventId){await logScan(code,eventId,'INVALID');return show('unknown','UNGÜLTIG',code);}if(t.used){await logScan(code,eventId,'ALREADY_USED');return show('used','BEREITS EINGELÖST',code);}const now=new Date().toISOString();const{error:upErr}=await client.from('tickets').update({used:true,used_at:now,used_by:currentUser.id}).eq('code',code).eq('used',false);if(upErr)return alert(upErr.message);await logScan(code,eventId,'REDEEMED');show('valid','GÜLTIG & EINGELÖST',code);}
+
+function normalizeTicketCode(rawCode) {
+  let code = (rawCode || "").trim();
+  try {
+    const u = new URL(code);
+    code = u.searchParams.get("id") || u.searchParams.get("code") || code;
+  } catch(e) {}
+  return code.trim();
+}
+
+function extractNummerFromCode(rawCode) {
+  const code = normalizeTicketCode(rawCode);
+  const m = code.match(/(\d{2})$/);
+  return m ? m[1] : code;
+}
+
+async function findTicketForScan(rawCode, eventId) {
+  const code = normalizeTicketCode(rawCode);
+  const nummer = extractNummerFromCode(code);
+
+  let q = client.from("tickets").select("*").eq("code", code);
+  if (eventId) q = q.eq("event_id", eventId);
+  let res = await q.limit(2);
+  if (!res.error && res.data && res.data.length === 1) return res.data[0];
+
+  q = client.from("tickets").select("*").eq("nummer", nummer);
+  if (eventId) q = q.eq("event_id", eventId);
+  res = await q.limit(2);
+  if (!res.error && res.data && res.data.length === 1) return res.data[0];
+
+  q = client.from("tickets").select("*").ilike("code", "%-" + nummer);
+  if (eventId) q = q.eq("event_id", eventId);
+  res = await q.limit(2);
+  if (!res.error && res.data && res.data.length === 1) return res.data[0];
+
+  return null;
+}
+
+async function checkCode(code){const eventId=scanEvent.value;const ev=events.find(e=>e.id===eventId);if(!ev)return show('closed','EVENT FEHLT','Bitte Event auswählen.');if(ev.status!=='open'){await logScan(code,eventId,'EVENT_CLOSED');return show('closed','EVENT GESCHLOSSEN');}const t = await findTicketForScan(code, eventId); const error = null;if(error||!t||t.event_id!==eventId){await logScan(code,eventId,'INVALID');return show('unknown','UNGÜLTIG',code);}if(t.used){await logScan(code,eventId,'ALREADY_USED');return show('used','BEREITS EINGELÖST',code);}const now=new Date().toISOString();const{error:upErr}=await client.from('tickets').update({used:true,used_at:now,used_by:currentUser.id}).eq('code',code).eq('used',false);if(upErr)return alert(upErr.message);await logScan(code,eventId,'REDEEMED');show('valid','GÜLTIG & EINGELÖST',code);}
 client.auth.getSession().then(({data})=>{if(data.session)init();});
 </script>
 </body>
