@@ -1,24 +1,183 @@
-<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TGH Superadmin</title><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><style>
-:root{--blue:#0B4EA2;--dark:#062B5F;--bg:#F3F7FD;--card:#fff;--text:#102033;--muted:#667085;--green:#039855;--red:#D92D20;--line:#D8E4F2}
-*{box-sizing:border-box}body{margin:0;font-family:Arial,Helvetica,sans-serif;background:linear-gradient(180deg,#eef6ff,#fff);color:var(--text);min-height:100vh}
-.header{display:flex;align-items:center;gap:14px;padding:18px 22px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}.header img{width:52px;height:52px;object-fit:contain}.header h1{margin:0;color:var(--dark);font-size:22px}.header p{margin:3px 0 0;color:var(--muted);font-size:13px}
-.wrap{max-width:1100px;margin:0 auto;padding:24px}.card{background:#fff;border:1px solid var(--line);border-radius:22px;padding:22px;margin-bottom:18px;box-shadow:0 14px 38px rgba(11,78,162,.09)}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-label{font-size:13px;color:var(--muted);font-weight:800;margin:12px 0 6px;display:block}input,select{width:100%;border:1px solid var(--line);border-radius:14px;padding:12px 14px;font-size:15px;background:#fff}
-button{border:0;border-radius:14px;padding:12px 16px;font-weight:900;cursor:pointer;background:var(--blue);color:#fff}button.secondary{background:#EEF5FF;color:var(--blue);border:1px solid #CFE0F7}button.green{background:var(--green)}button:disabled{opacity:.45}
-.hidden{display:none!important}.small{font-size:13px;color:var(--muted)}.status{border-radius:22px;padding:28px;text-align:center;font-size:38px;font-weight:1000}.status.valid{background:#E7FFF4;color:#007A4D}.status.used{background:#FFF1F0;color:var(--red)}.status.unknown{background:#F2F4F7;color:#344054}
-.kpi{padding:18px;border-radius:18px;background:#F8FBFF;border:1px solid var(--line)}.kpi strong{display:block;font-size:32px;color:var(--blue)}.table{width:100%;border-collapse:collapse}.table th,.table td{text-align:left;padding:10px;border-bottom:1px solid var(--line);font-size:14px}.table th{color:var(--muted);font-size:12px;text-transform:uppercase}#reader{border-radius:18px;overflow:hidden;border:1px solid var(--line);min-height:260px}
-.preview{min-height:220px;border:2px dashed var(--line);border-radius:18px;display:flex;align-items:center;justify-content:center;background:#F8FBFF}.preview img{max-width:100%;max-height:260px}</style></head><body><header class="header"><img src="assets/tgh-logo.png"><div><h1>TGH Superadmin</h1><p>Übersicht & Verwaltung</p></div></header><main class="wrap">
-<section id="loginCard" class="card"><h2>Superadmin Login</h2><label>E-Mail</label><input id="email" type="email"><label>Passwort</label><input id="password" type="password"><p><button onclick="login()">Einloggen</button></p><p id="loginMsg" class="small"></p></section>
-<section id="app" class="hidden"><p class="row"><button onclick="loadAll()">Aktualisieren</button><button class="secondary" onclick="logout()">Ausloggen</button></p><div class="grid"><div class="kpi"><span class="small">Tickets gesamt</span><strong id="kpiTotal">0</strong></div><div class="kpi"><span class="small">Eingelöst</span><strong id="kpiUsed">0</strong></div><div class="kpi"><span class="small">Offen</span><strong id="kpiOpen">0</strong></div></div>
-<div class="card"><h2>Neues Ticket erstellen</h2><div class="grid"><div><label>Code</label><input id="newCode"></div><div><label>Parkschein-ID</label><input id="newPark"></div><div><label>Nummer</label><input id="newNr"></div></div><p><button onclick="createTicket()">Ticket speichern</button></p></div>
-<div class="card"><h2>Ticketlayout hochladen</h2><input type="file" id="layoutFile" accept="image/png,image/jpeg" onchange="previewLayout()"><div class="preview"><img id="layoutPreview"></div><p class="small">Vorschau ist drin. QR/Text-Platzierung kommt als nächster Schritt.</p></div>
-<div class="card"><h2>Ticketing-Account Rolle setzen</h2><p class="small">User zuerst in Supabase Authentication → Users anlegen. Danach UID hier eintragen.</p><div class="grid"><div><label>User UID</label><input id="profileUid"></div><div><label>E-Mail</label><input id="profileEmail"></div><div><label>Rolle</label><select id="profileRole"><option value="ticketing">ticketing</option><option value="superadmin">superadmin</option></select></div></div><p><button onclick="saveProfile()">Profil/Rolle speichern</button></p></div>
-<div class="card"><h2>Ticketübersicht</h2><select id="filter" onchange="renderTable()"><option value="all">Alle</option><option value="used">Eingelöst</option><option value="open">Offen</option></select><div style="overflow:auto"><table class="table"><thead><tr><th>Code</th><th>Parkschein-ID</th><th>Nr</th><th>Status</th><th>Eingelöst am</th></tr></thead><tbody id="tbody"></tbody></table></div></div></section></main>
-<script>const client = supabase.createClient("https://ebqevsvhbiertnqqkigk.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVicWV2c3ZoYmllcnRucXFraWdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczNzI1MzIsImV4cCI6MjA5Mjk0ODUzMn0.hlbW90t0ncDjLq_oxDdQafEz80WcfgF8Rvt-XTKslIk");
-let tickets=[];async function login(){const email=document.getElementById("email").value.trim(),password=document.getElementById("password").value;const{error}=await client.auth.signInWithPassword({email,password});document.getElementById("loginMsg").textContent=error?error.message:"Eingeloggt.";await init();}async function logout(){await client.auth.signOut();location.reload();}async function init(){const{data}=await client.auth.getSession();const logged=!!data.session;loginCard.classList.toggle("hidden",logged);app.classList.toggle("hidden",!logged);if(logged)await loadAll();}
-async function loadAll(){const{data,error}=await client.from("tickets").select("*").order("created_at",{ascending:true});if(error)return alert(error.message);tickets=data||[];renderTable();}
-function renderTable(){const f=filter.value,rows=tickets.filter(t=>f==="all"||(f==="used"&&t.used)||(f==="open"&&!t.used));kpiTotal.textContent=tickets.length;kpiUsed.textContent=tickets.filter(t=>t.used).length;kpiOpen.textContent=tickets.filter(t=>!t.used).length;tbody.innerHTML=rows.map(t=>`<tr><td>${t.code}</td><td>${t.parkschein_id}</td><td>${t.nummer}</td><td>${t.used?"Eingelöst":"Offen"}</td><td>${t.used_at?new Date(t.used_at).toLocaleString("de-DE"):"-"}</td></tr>`).join("");}
-function splitCode(code){const i=code.lastIndexOf("-");return i>=0?[code.slice(0,i),code.slice(i+1)]:[code.slice(0,-2),code.slice(-2)];}async function createTicket(){let code=newCode.value.trim(),park=newPark.value.trim(),nr=newNr.value.trim();if(!code)return alert("Code fehlt.");if(!park||!nr){const s=splitCode(code);park=park||s[0];nr=nr||s[1];}const{data:{user}}=await client.auth.getUser();const{error}=await client.from("tickets").insert({code,parkschein_id:park,nummer:nr,status:"valid",used:false,created_by:user.id});if(error)return alert(error.message);newCode.value=newPark.value=newNr.value="";await loadAll();}
-async function saveProfile(){const id=profileUid.value.trim(),email=profileEmail.value.trim(),role=profileRole.value;if(!id||!email)return alert("UID und E-Mail fehlen.");const{error}=await client.from("profiles").upsert({id,email,role});if(error)return alert(error.message);alert("Profil gespeichert.");}function previewLayout(){const f=layoutFile.files[0];if(f)layoutPreview.src=URL.createObjectURL(f);}init();
-</script></body></html>
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TGH Superadmin</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+<style>
+body {font-family: Arial; background:#f3f7fd; margin:0;}
+.container {max-width:900px; margin:auto; padding:20px;}
+.card {background:white; padding:20px; border-radius:12px; margin-bottom:20px;}
+button {padding:10px 15px; background:#0B4EA2; color:white; border:none; border-radius:8px;}
+input {padding:10px; width:100%; margin-bottom:10px;}
+</style>
+</head>
+
+<body>
+<div class="container">
+
+<h2>Superadmin Login</h2>
+<div id="login">
+<input id="email" placeholder="Email">
+<input id="password" type="password" placeholder="Passwort">
+<button onclick="login()">Login</button>
+</div>
+
+<div id="app" style="display:none;">
+
+<div class="card">
+<h3>Tickets generieren</h3>
+<input id="count" placeholder="Anzahl">
+<button onclick="generateTickets()">Generieren</button>
+<p id="status"></p>
+</div>
+
+<div class="card">
+<h3>Layout hochladen</h3>
+<input type="file" id="layoutInput">
+</div>
+
+<div class="card">
+<h3>ZIP Export</h3>
+<button onclick="exportTickets()">Download</button>
+</div>
+
+<div class="card">
+<h3>Tickets</h3>
+<table border="1" width="100%">
+<thead><tr><th>Code</th><th>Status</th><th>Aktion</th></tr></thead>
+<tbody id="tbody"></tbody>
+</table>
+</div>
+
+</div>
+</div>
+
+<script>
+
+const client = supabase.createClient(
+"https://ebqevsvhbiertnqqkigk.supabase.co",
+"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVicWV2c3ZoYmllcnRucXFraWdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczNzI1MzIsImV4cCI6MjA5Mjk0ODUzMn0.hlbW90t0ncDjLq_oxDdQafEz80WcfgF8Rvt-XTKslIk"
+);
+
+let tickets = [];
+let layoutImage = null;
+
+document.getElementById("layoutInput").addEventListener("change", e=>{
+const reader = new FileReader();
+reader.onload = ()=> layoutImage = reader.result;
+reader.readAsDataURL(e.target.files[0]);
+});
+
+async function login(){
+const {error} = await client.auth.signInWithPassword({
+email: email.value,
+password: password.value
+});
+if(!error){
+login.style.display="none";
+app.style.display="block";
+loadTickets();
+}
+}
+
+async function loadTickets(){
+const {data} = await client.from("tickets").select("*");
+tickets = data;
+render();
+}
+
+function render(){
+tbody.innerHTML = tickets.map(t=>`
+<tr>
+<td>${t.code}</td>
+<td>${t.used?"🔴 eingelöst":"🟢 gültig"}</td>
+<td>${t.used?`<button onclick="reactivate('${t.code}')">Reaktivieren</button>`:""}</td>
+</tr>`).join("");
+}
+
+async function reactivate(code){
+await client.from("tickets").update({
+used:false,
+used_at:null,
+used_by:null
+}).eq("code",code);
+loadTickets();
+}
+
+function randomCode(){
+const chars="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+let c="";
+for(let i=0;i<10;i++) c+=chars[Math.floor(Math.random()*chars.length)];
+return c;
+}
+
+async function generateTickets(){
+const count = parseInt(document.getElementById("count").value);
+const {data:{user}} = await client.auth.getUser();
+
+let list=[];
+for(let i=0;i<count;i++){
+let code=randomCode();
+list.push({
+code,
+parkschein_id:code.slice(0,6),
+nummer:i,
+status:"valid",
+used:false,
+created_by:user.id
+});
+}
+await client.from("tickets").insert(list);
+status.innerText="fertig";
+loadTickets();
+}
+
+async function exportTickets(){
+if(!layoutImage){alert("Layout fehlt"); return;}
+
+const zip=new JSZip();
+
+for(let t of tickets){
+
+const canvas=document.createElement("canvas");
+const ctx=canvas.getContext("2d");
+
+const img=new Image();
+img.src=layoutImage;
+await new Promise(r=>img.onload=r);
+
+canvas.width=img.width;
+canvas.height=img.height;
+
+ctx.drawImage(img,0,0);
+
+const qrCanvas=document.createElement("canvas");
+await QRCode.toCanvas(qrCanvas, location.origin+"/?id="+t.code);
+
+ctx.drawImage(qrCanvas, canvas.width-200, canvas.height-200, 180,180);
+
+ctx.fillStyle="black";
+ctx.font="30px Arial";
+ctx.fillText(t.code,50,canvas.height-50);
+
+const blob=await new Promise(r=>canvas.toBlob(r));
+zip.file(t.code+".png", blob);
+}
+
+const content = await zip.generateAsync({type:"blob"});
+const a=document.createElement("a");
+a.href=URL.createObjectURL(content);
+a.download="tickets.zip";
+a.click();
+}
+
+</script>
+
+</body>
+</html>
