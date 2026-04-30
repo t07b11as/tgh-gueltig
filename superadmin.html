@@ -507,6 +507,44 @@ function extractCode(raw) {
 
 async function checkManual() { await checkCode(extractCode(manualScan.value)); }
 
+
+function normalizeTicketCode(rawCode) {
+  let code = (rawCode || "").trim();
+  try {
+    const u = new URL(code);
+    code = u.searchParams.get("id") || u.searchParams.get("code") || code;
+  } catch(e) {}
+  return code.trim();
+}
+
+function extractNummerFromCode(rawCode) {
+  const code = normalizeTicketCode(rawCode);
+  const m = code.match(/(\d{2})$/);
+  return m ? m[1] : code;
+}
+
+async function findTicketForScan(rawCode, eventId) {
+  const code = normalizeTicketCode(rawCode);
+  const nummer = extractNummerFromCode(code);
+
+  let q = client.from("tickets").select("*").eq("code", code);
+  if (eventId) q = q.eq("event_id", eventId);
+  let res = await q.limit(2);
+  if (!res.error && res.data && res.data.length === 1) return res.data[0];
+
+  q = client.from("tickets").select("*").eq("nummer", nummer);
+  if (eventId) q = q.eq("event_id", eventId);
+  res = await q.limit(2);
+  if (!res.error && res.data && res.data.length === 1) return res.data[0];
+
+  q = client.from("tickets").select("*").ilike("code", "%-" + nummer);
+  if (eventId) q = q.eq("event_id", eventId);
+  res = await q.limit(2);
+  if (!res.error && res.data && res.data.length === 1) return res.data[0];
+
+  return null;
+}
+
 async function checkCode(code) {
   const eventId = scanEvent.value || null;
   const ev = events.find(e => e.id === eventId);
