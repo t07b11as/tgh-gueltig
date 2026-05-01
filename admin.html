@@ -7,27 +7,57 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://unpkg.com/html5-qrcode"></script>
 <style>
-body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#f3f7fd;color:#102033}
-.header{padding:18px 22px;background:white;border-bottom:1px solid #D8E4F2}
-.wrap{max-width:900px;margin:auto;padding:22px}
-.card{background:white;border:1px solid #D8E4F2;border-radius:18px;padding:18px;margin-bottom:16px;box-shadow:0 10px 26px rgba(11,78,162,.07)}
+:root{
+  --blue:#002F6C;
+  --blue2:#001F4E;
+  --royal:#0047AB;
+  --bg:#EEF4FF;
+  --text:#102033;
+  --muted:#667085;
+  --green:#039855;
+  --red:#D92D20;
+  --amber:#F79009;
+  --line:#C9D8EE;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,Helvetica,sans-serif;background:linear-gradient(180deg,#eaf2ff,#ffffff);color:var(--text);min-height:100vh}
+.header{padding:16px 22px;background:linear-gradient(135deg,var(--blue2),var(--blue));border-bottom:1px solid #173f78;color:white;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:20}
+.header img{width:54px;height:54px;object-fit:contain;background:white;border-radius:14px;padding:6px}
+.header h1{margin:0;font-size:23px}
+.header p{margin:3px 0 0;color:#D8E6FF;font-size:13px}
+.wrap{max-width:980px;margin:auto;padding:18px}
+.card{background:white;border:1px solid var(--line);border-radius:22px;padding:18px;margin-bottom:16px;box-shadow:0 14px 36px rgba(0,47,108,.11)}
+.loginLogo{display:block;width:108px;height:108px;object-fit:contain;margin:0 auto 12px;background:white;border-radius:24px;padding:8px;box-shadow:0 10px 26px rgba(0,47,108,.14)}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
-input,select{width:100%;padding:12px;border:1px solid #D8E4F2;border-radius:12px;box-sizing:border-box}
-label{display:block;margin:10px 0 5px;color:#667085;font-weight:800}
-button{background:#0B4EA2;color:white;border:0;border-radius:12px;padding:12px 16px;font-weight:900;cursor:pointer}
-.secondary{background:#eef5ff;color:#0B4EA2;border:1px solid #cfe0f7}
+input,select{width:100%;padding:13px;border:1px solid var(--line);border-radius:14px;box-sizing:border-box;font-size:16px}
+label{display:block;margin:10px 0 5px;color:var(--muted);font-weight:800}
+button{background:var(--blue);color:white;border:0;border-radius:14px;padding:12px 16px;font-weight:900;cursor:pointer}
+button:hover{background:var(--royal)}
+.secondary{background:#eef5ff;color:var(--blue);border:1px solid #cfe0f7}
 .hidden{display:none!important}
-.status{border-radius:18px;padding:24px;text-align:center;font-size:34px;font-weight:1000}
-.valid{background:#E7FFF4;color:#007A4D}.used{background:#FFF1F0;color:#D92D20}.closed{background:#FFF7E6;color:#B54708}.unknown{background:#F2F4F7;color:#344054}
-#reader{min-height:260px;border:1px solid #D8E4F2;border-radius:14px;overflow:hidden}
-.small{font-size:13px;color:#667085}
+.status{border-radius:20px;padding:28px;text-align:center;font-size:38px;font-weight:1000;letter-spacing:.02em}
+.valid{background:#E7FFF4;color:#007A4D;border:2px solid #9BE7C2}
+.used{background:#FFF1F0;color:var(--red);border:2px solid #FDA29B}
+.closed{background:#FFF7E6;color:#B54708;border:2px solid #FEDF89}
+.unknown{background:#F2F4F7;color:#344054;border:2px solid #D0D5DD}
+#reader{min-height:260px;border:1px solid var(--line);border-radius:16px;overflow:hidden}
+#result{position:sticky;top:86px;z-index:12;border:2px solid var(--blue);box-shadow:0 16px 42px rgba(0,47,108,.18)}
+.small{font-size:13px;color:var(--muted)}
+@media(max-width:700px){
+  .wrap{padding:12px}
+  .header{padding:12px 14px}
+  .header img{width:46px;height:46px;border-radius:12px}
+  .header h1{font-size:19px}
+  #result{position:sticky;top:72px;margin-bottom:12px}
+  .status{font-size:30px;padding:22px 12px}
+}
 </style>
 </head>
 <body>
-<div class="header"><h1>TGH Scanner</h1><p class="small">Version: redeem-final-fix</p></div>
+<div class="header"><img src="assets/tgh-logo.png" alt="TGH Logo"><div><h1>TGH Scanner</h1><p>Ticketing & Einlasskontrolle</p></div></div>
 <main class="wrap">
 <section id="loginCard" class="card">
-<h2>Login</h2>
+<img class="loginLogo" src="assets/tgh-logo.png" alt="TGH Logo"><h2>Login</h2>
 <label>Benutzername oder E-Mail</label><input id="email" placeholder="z.B. max">
 <label>Passwort</label><input id="password" type="password">
 <p><button onclick="login()">Einloggen</button></p>
@@ -35,6 +65,7 @@ button{background:#0B4EA2;color:white;border:0;border-radius:12px;padding:12px 1
 </section>
 
 <section id="app" class="hidden">
+<div id="result" class="card hidden"></div>
 <div class="grid">
 <div class="card">
 <h2>Scannen</h2>
@@ -49,7 +80,6 @@ button{background:#0B4EA2;color:white;border:0;border-radius:12px;padding:12px 1
 <p><button class="secondary" onclick="logout()">Ausloggen</button></p>
 </div>
 </div>
-<div id="result" class="card hidden"></div>
 </section>
 </main>
 
