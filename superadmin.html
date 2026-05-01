@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>TGH Superadmin V2</title>
+<title>TGH Superadmin V2 · redeem-final-fix</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://unpkg.com/html5-qrcode"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
@@ -507,44 +507,6 @@ function extractCode(raw) {
 
 async function checkManual() { await checkCode(extractCode(manualScan.value)); }
 
-
-function normalizeTicketCode(rawCode) {
-  let code = (rawCode || "").trim();
-  try {
-    const u = new URL(code);
-    code = u.searchParams.get("id") || u.searchParams.get("code") || code;
-  } catch(e) {}
-  return code.trim();
-}
-
-function extractNummerFromCode(rawCode) {
-  const code = normalizeTicketCode(rawCode);
-  const m = code.match(/(\d{2})$/);
-  return m ? m[1] : code;
-}
-
-async function findTicketForScan(rawCode, eventId) {
-  const code = normalizeTicketCode(rawCode);
-  const nummer = extractNummerFromCode(code);
-
-  let q = client.from("tickets").select("*").eq("code", code);
-  if (eventId) q = q.eq("event_id", eventId);
-  let res = await q.limit(2);
-  if (!res.error && res.data && res.data.length === 1) return res.data[0];
-
-  q = client.from("tickets").select("*").eq("nummer", nummer);
-  if (eventId) q = q.eq("event_id", eventId);
-  res = await q.limit(2);
-  if (!res.error && res.data && res.data.length === 1) return res.data[0];
-
-  q = client.from("tickets").select("*").ilike("code", "%-" + nummer);
-  if (eventId) q = q.eq("event_id", eventId);
-  res = await q.limit(2);
-  if (!res.error && res.data && res.data.length === 1) return res.data[0];
-
-  return null;
-}
-
 async function checkCode(code) {
   const eventId = scanEvent.value || null;
   const ev = events.find(e => e.id === eventId);
@@ -559,13 +521,13 @@ async function checkCode(code) {
     return scanResult.innerHTML = '<div class="status used">UNGÜLTIG</div>';
   }
   if (t.used) {
-    await logScan(code, eventId, 'ALREADY_USED');
+    await logScan(t.code, eventId, 'ALREADY_USED');
     return scanResult.innerHTML = `<div class="status used">BEREITS EINGELÖST</div><p>${t.code}</p>`;
   }
   const now = new Date().toISOString();
-  const { error:upErr } = await client.from('tickets').update({ used:true, used_at:now, used_by:currentUser.id }).eq('code', code).eq('used', false);
+  const { error:upErr } = await client.from('tickets').update({ used:true, used_at:now, used_by:currentUser.id }).eq('code', t.code).eq('used', false);
   if (upErr) return alert(upErr.message);
-  await logScan(code, eventId, 'REDEEMED');
+  await logScan(t.code, eventId, 'REDEEMED');
   scanResult.innerHTML = `<div class="status valid">GÜLTIG & EINGELÖST</div><p>${t.code}</p><p>${t.ticket_holder || ''} · ${t.ticket_type || ''}</p>`;
   await loadAll();
 }

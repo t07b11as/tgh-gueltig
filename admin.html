@@ -3,34 +3,35 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>TGH Ticketing Scanner</title>
+<title>TGH Scanner</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://unpkg.com/html5-qrcode"></script>
 <style>
 body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#f3f7fd;color:#102033}
 .header{padding:18px 22px;background:white;border-bottom:1px solid #D8E4F2}
 .wrap{max-width:900px;margin:auto;padding:22px}
-.card{background:white;border:1px solid #D8E4F2;border-radius:18px;padding:18px;margin-bottom:16px}
+.card{background:white;border:1px solid #D8E4F2;border-radius:18px;padding:18px;margin-bottom:16px;box-shadow:0 10px 26px rgba(11,78,162,.07)}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
-input,select{width:100%;padding:12px;border:1px solid #D8E4F2;border-radius:12px}
+input,select{width:100%;padding:12px;border:1px solid #D8E4F2;border-radius:12px;box-sizing:border-box}
 label{display:block;margin:10px 0 5px;color:#667085;font-weight:800}
-button{background:#0B4EA2;color:white;border:0;border-radius:12px;padding:12px 16px;font-weight:900}
+button{background:#0B4EA2;color:white;border:0;border-radius:12px;padding:12px 16px;font-weight:900;cursor:pointer}
 .secondary{background:#eef5ff;color:#0B4EA2;border:1px solid #cfe0f7}
 .hidden{display:none!important}
 .status{border-radius:18px;padding:24px;text-align:center;font-size:34px;font-weight:1000}
 .valid{background:#E7FFF4;color:#007A4D}.used{background:#FFF1F0;color:#D92D20}.closed{background:#FFF7E6;color:#B54708}.unknown{background:#F2F4F7;color:#344054}
 #reader{min-height:260px;border:1px solid #D8E4F2;border-radius:14px;overflow:hidden}
+.small{font-size:13px;color:#667085}
 </style>
 </head>
 <body>
-<div class="header"><h1>TGH Scanner</h1></div>
+<div class="header"><h1>TGH Scanner</h1><p class="small">Version: redeem-final-fix</p></div>
 <main class="wrap">
 <section id="loginCard" class="card">
 <h2>Login</h2>
 <label>Benutzername oder E-Mail</label><input id="email" placeholder="z.B. max">
 <label>Passwort</label><input id="password" type="password">
 <p><button onclick="login()">Einloggen</button></p>
-<p id="loginMsg"></p>
+<p id="loginMsg" class="small"></p>
 </section>
 
 <section id="app" class="hidden">
@@ -51,50 +52,53 @@ button{background:#0B4EA2;color:white;border:0;border-radius:12px;padding:12px 1
 <div id="result" class="card hidden"></div>
 </section>
 </main>
+
 <script>
 const client = supabase.createClient("https://ebqevsvhbiertnqqkigk.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVicWV2c3ZoYmllcnRucXFraWdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczNzI1MzIsImV4cCI6MjA5Mjk0ODUzMn0.hlbW90t0ncDjLq_oxDdQafEz80WcfgF8Rvt-XTKslIk");
-let currentUser=null, events=[], html5QrCode=null;
-function norm(v){let e=(v||'').trim(); if(e&&!e.includes('@')) e=e.toLowerCase().replace(/\s+/g,'')+'@tgh.local'; return e;}
-function extract(raw){try{const u=new URL(raw);return u.searchParams.get('id')||u.searchParams.get('code')||raw.trim();}catch(e){return(raw||'').trim();}}
-async function login(){loginMsg.textContent='Login läuft...';const{error}=await client.auth.signInWithPassword({email:norm(email.value),password:password.value});if(error){loginMsg.textContent='Fehler: '+error.message;return;}await init();}
-async function logout(){await client.auth.signOut();location.reload();}
-async function init(){const{data}=await client.auth.getUser();currentUser=data.user;if(!currentUser)return;loginCard.classList.add('hidden');app.classList.remove('hidden');await loadEvents();}
-async function loadEvents(){const{data,error}=await client.from('events').select('*').order('created_at',{ascending:false});if(error)return alert(error.message);events=data||[];scanEvent.innerHTML='<option value="">Event wählen</option>'+events.map(e=>`<option value="${e.id}">${e.name} (${e.status})</option>`).join('');}
-async function startScanner(){if(html5QrCode)return;html5QrCode=new Html5Qrcode('reader');await html5QrCode.start({facingMode:'environment'},{fps:10,qrbox:250},async d=>{await stopScanner();await checkCode(extract(d));},()=>{});}
-async function stopScanner(){if(html5QrCode){try{await html5QrCode.stop();}catch(e){}html5QrCode.clear();html5QrCode=null;}}
-async function checkManual(){await checkCode(extract(manualCode.value));}
-async function logScan(code,eventId,resultText){await client.from('scan_logs').insert({ticket_code:code,event_id:eventId,user_id:currentUser.id,result:resultText});}
-function show(cls,title,body=''){result.classList.remove('hidden');result.innerHTML=`<div class="status ${cls}">${title}</div><p>${body}</p>`;}
+let currentUser = null;
+let events = [];
+let html5QrCode = null;
 
-function normalizeTicketCode(rawCode) {
-  let code = (rawCode || "").trim();
+function normLogin(value) {
+  let email = (value || "").trim();
+  if (email && !email.includes("@")) {
+    email = email.toLowerCase().replace(/\s+/g, "") + "@tgh.local";
+  }
+  return email;
+}
+
+function normalizeScanned(raw) {
+  let value = (raw || "").trim();
   try {
-    const u = new URL(code);
-    code = u.searchParams.get("id") || u.searchParams.get("code") || code;
+    const u = new URL(value);
+    value = u.searchParams.get("id") || u.searchParams.get("code") || value;
   } catch(e) {}
-  return code.trim();
+  return value.trim();
 }
 
-function extractNummerFromCode(rawCode) {
-  const code = normalizeTicketCode(rawCode);
-  const m = code.match(/(\d{2})$/);
-  return m ? m[1] : code;
+function numberFromScan(raw) {
+  const value = normalizeScanned(raw);
+  const match = value.match(/(\d{2})$/);
+  return match ? match[1] : value;
 }
 
-async function findTicketForScan(rawCode, eventId) {
-  const code = normalizeTicketCode(rawCode);
-  const nummer = extractNummerFromCode(code);
+async function findTicket(raw, eventId) {
+  const scanned = normalizeScanned(raw);
+  const nummer = numberFromScan(scanned);
 
-  let q = client.from("tickets").select("*").eq("code", code);
+  // 1 exact code
+  let q = client.from("tickets").select("*").eq("code", scanned);
   if (eventId) q = q.eq("event_id", eventId);
   let res = await q.limit(2);
   if (!res.error && res.data && res.data.length === 1) return res.data[0];
 
+  // 2 match by nummer inside selected event
   q = client.from("tickets").select("*").eq("nummer", nummer);
   if (eventId) q = q.eq("event_id", eventId);
   res = await q.limit(2);
   if (!res.error && res.data && res.data.length === 1) return res.data[0];
 
+  // 3 match by code suffix -01
   q = client.from("tickets").select("*").ilike("code", "%-" + nummer);
   if (eventId) q = q.eq("event_id", eventId);
   res = await q.limit(2);
@@ -103,8 +107,128 @@ async function findTicketForScan(rawCode, eventId) {
   return null;
 }
 
-async function checkCode(code){const eventId=scanEvent.value;const ev=events.find(e=>e.id===eventId);if(!ev)return show('closed','EVENT FEHLT','Bitte Event auswählen.');if(ev.status!=='open'){await logScan(code,eventId,'EVENT_CLOSED');return show('closed','EVENT GESCHLOSSEN');}const t = await findTicketForScan(code, eventId); const error = null;if(error||!t||t.event_id!==eventId){await logScan(code,eventId,'INVALID');return show('unknown','UNGÜLTIG',code);}if(t.used){await logScan(code,eventId,'ALREADY_USED');return show('used','BEREITS EINGELÖST',code);}const now=new Date().toISOString();const{error:upErr}=await client.from('tickets').update({used:true,used_at:now,used_by:currentUser.id}).eq('code',code).eq('used',false);if(upErr)return alert(upErr.message);await logScan(code,eventId,'REDEEMED');show('valid','GÜLTIG & EINGELÖST',code);}
-client.auth.getSession().then(({data})=>{if(data.session)init();});
+async function login() {
+  loginMsg.textContent = "Login läuft...";
+  const { error } = await client.auth.signInWithPassword({
+    email: normLogin(email.value),
+    password: password.value
+  });
+  if (error) {
+    loginMsg.textContent = "Fehler: " + error.message;
+    return;
+  }
+  await init();
+}
+
+async function logout() {
+  await client.auth.signOut();
+  location.reload();
+}
+
+async function init() {
+  const { data } = await client.auth.getUser();
+  currentUser = data.user;
+  if (!currentUser) return;
+  loginCard.classList.add("hidden");
+  app.classList.remove("hidden");
+  await loadEvents();
+}
+
+async function loadEvents() {
+  const { data, error } = await client.from("events").select("*").order("created_at", { ascending:false });
+  if (error) return alert(error.message);
+  events = data || [];
+  scanEvent.innerHTML = '<option value="">Event wählen</option>' + events.map(e => `<option value="${e.id}">${e.name} (${e.status})</option>`).join("");
+}
+
+async function startScanner() {
+  if (html5QrCode) return;
+  html5QrCode = new Html5Qrcode("reader");
+  await html5QrCode.start(
+    { facingMode:"environment" },
+    { fps:10, qrbox:250 },
+    async decoded => {
+      await stopScanner();
+      await checkCode(decoded);
+    },
+    () => {}
+  );
+}
+
+async function stopScanner() {
+  if (!html5QrCode) return;
+  try { await html5QrCode.stop(); } catch(e) {}
+  html5QrCode.clear();
+  html5QrCode = null;
+}
+
+async function checkManual() {
+  await checkCode(manualCode.value);
+}
+
+async function logScan(ticketCode, eventId, resultText) {
+  await client.from("scan_logs").insert({
+    ticket_code: ticketCode,
+    event_id: eventId,
+    user_id: currentUser.id,
+    result: resultText
+  });
+}
+
+function show(cls, title, body = "") {
+  result.classList.remove("hidden");
+  result.innerHTML = `<div class="status ${cls}">${title}</div><p>${body}</p>`;
+}
+
+async function checkCode(rawCode) {
+  const eventId = scanEvent.value;
+  const ev = events.find(e => e.id === eventId);
+  const scanned = normalizeScanned(rawCode);
+
+  if (!ev) return show("closed", "EVENT FEHLT", "Bitte Event auswählen.");
+  if (ev.status !== "open") {
+    await logScan(scanned, eventId, "EVENT_CLOSED");
+    return show("closed", "EVENT GESCHLOSSEN");
+  }
+
+  const ticket = await findTicket(scanned, eventId);
+
+  if (!ticket) {
+    await logScan(scanned, eventId, "INVALID");
+    return show("unknown", "UNGÜLTIG", "Gescannter Wert: " + scanned);
+  }
+
+  if (ticket.used === true) {
+    await logScan(ticket.code, eventId, "ALREADY_USED");
+    return show("used", "BEREITS EINGELÖST", ticket.code + "<br>" + (ticket.used_at ? new Date(ticket.used_at).toLocaleString("de-DE") : ""));
+  }
+
+  const now = new Date().toISOString();
+
+  // Critical fix: update by the REAL database ticket code, not by scanned ?id=01
+  const { data: updated, error } = await client
+    .from("tickets")
+    .update({ used:true, used_at:now, used_by:currentUser.id })
+    .eq("code", ticket.code)
+    .eq("used", false)
+    .select("*");
+
+  if (error) return alert(error.message);
+
+  if (!updated || updated.length !== 1) {
+    await logScan(ticket.code, eventId, "ALREADY_USED");
+    return show("used", "BEREITS EINGELÖST", ticket.code);
+  }
+
+  await logScan(ticket.code, eventId, "REDEEMED");
+  show("valid", "GÜLTIG & EINGELÖST", ticket.code);
+}
+
+client.auth.getSession().then(({
+  data
+}) => {
+  if (data.session) init();
+});
 </script>
 </body>
 </html>
